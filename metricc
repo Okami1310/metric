@@ -1,0 +1,112 @@
+import os
+import re
+import tkinter as tk
+from tkinter import ttk
+
+def count_lines_of_code(file_path):
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        loc = sum(1 for line in lines if line.strip())
+    return loc
+
+def analyze_java_file(file_path, class_names):
+    with open(file_path, 'r') as file:
+        content = file.read()
+
+    content_without_imports = re.sub(r'import\s+[\w\.]+;', '', content)
+    classes = re.findall(r'\bclass\s+(\w+)', content_without_imports)
+    methods = re.findall(r'\b(?:public|private|protected)\s+\w+\s+\w+\s*\(', content_without_imports)
+    attributes = re.findall(r'\b(?:private|protected|public)\s+\w+\s+\w+;', content_without_imports)
+    set_methods = re.findall(r'\bset\w+\s*\(', content_without_imports)
+    get_methods = re.findall(r'\bget\w+\s*\(', content_without_imports)
+    constructors = re.findall(r'\b(?:public|protected|private)\s+\w+\s*\(', content_without_imports)
+    generalizations = re.findall(r'\bextends\s+(\w+)', content_without_imports)
+    unique_generalizations = set(generalizations)
+
+    associations = 0
+    for class_name in class_names:
+        pattern = re.compile(
+            r'\b' + re.escape(class_name) + r'\b\s+[a-zA-Z_]\w*|' +
+            r'\b[a-zA-Z_]\w*\s+' + re.escape(class_name) + r'\b'
+        )
+        if pattern.search(content_without_imports):
+            associations += 1
+
+    return {
+        "NC": len(classes),
+        "ANM": len(methods),
+        "ANA": len(attributes),
+        "ANSM": len(set_methods),
+        "ANGM": len(get_methods),
+        "ANCM": len(constructors),
+        "NGen": len(unique_generalizations),
+        "NAssoc": associations
+    }
+
+def analyze_directory(directory_path):
+    total_loc = 0
+    total_classes = 0
+    total_attributes = 0
+    total_methods = 0
+    total_set_methods = 0
+    total_get_methods = 0
+    total_constructors = 0
+    total_generalizations = 0
+    total_associations = 0
+
+    class_names = []
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            if file.endswith(".java"):
+                file_path = os.path.join(root, file)
+                with open(file_path, 'r') as java_file:
+                    content = java_file.read()
+                    class_names.extend(re.findall(r'\bclass\s+(\w+)', content))
+
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            if file.endswith(".java"):
+                file_path = os.path.join(root, file)
+                total_loc += count_lines_of_code(file_path)
+                file_metrics = analyze_java_file(file_path, class_names)
+                total_classes += file_metrics["NC"]
+                total_attributes += file_metrics["ANA"]
+                total_methods += file_metrics["ANM"]
+                total_set_methods += file_metrics["ANSM"]
+                total_get_methods += file_metrics["ANGM"]
+                total_constructors += file_metrics["ANCM"]
+                total_generalizations += file_metrics["NGen"]
+                total_associations += file_metrics["NAssoc"]
+
+    metrics = {
+        "LOC (число рядків коду програми)": total_loc,
+        "NC (загальна кількість класів)": total_classes,
+        "ANA (середня кількість атрибутів)": total_attributes / total_classes if total_classes else 0,
+        "ANM (середня кількість методів)": total_methods / total_classes if total_classes else 0,
+        "ANSM (середня кількість set методів)": total_set_methods / total_classes if total_classes else 0,
+        "ANGM (середня кількість get методів)": total_get_methods / total_classes if total_classes else 0,
+        "ANCM (середня кількість методів-конструкторів)": total_constructors / total_classes if total_classes else 0,
+        "NGen (generalization)": total_generalizations,
+        "NAssoc (association)": total_associations
+    }
+
+    return metrics
+
+def show_metrics_in_window(metrics):
+    window = tk.Tk()
+    window.title("Java Project Metrics")
+
+    tree = ttk.Treeview(window, columns=("Metric", "Value"), show="headings")
+    tree.heading("Metric", text="Metric")
+    tree.heading("Value", text="Value")
+    tree.pack()
+
+    for metric, value in metrics.items():
+        tree.insert("", tk.END, values=(metric, f"{value:.2f}" if isinstance(value, float) else value))
+
+    window.mainloop()
+
+directory = r"путь до папки з файлами"
+result = analyze_directory(directory)
+
+show_metrics_in_window(result)
